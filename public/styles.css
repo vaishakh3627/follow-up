@@ -1,0 +1,190 @@
+* {
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #f5f7fb;
+  color: #1a1a1a;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+}
+
+header h1 {
+  margin-bottom: 8px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 18px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+input,
+textarea,
+select,
+button {
+  font-size: 14px;
+  padding: 10px 12px;
+  border: 1px solid #d3d9e0;
+  border-radius: 8px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.inline-group {
+  margin-top: 16px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.inline-group label {
+  flex-direction: row;
+  align-items: center;
+  font-weight: 500;
+}
+
+.actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: #2f66f5;
+  color: white;
+  font-weight: 600;
+}
+
+.secondary-btn {
+  background: #4f5662;
+}
+
+.recorder {
+  border: 1px dashed #d3d9e0;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.recorder-title {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.recorder-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.recorded-preview {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.hidden {
+  display: none;
+}
+
+.message {
+  min-height: 22px;
+  margin-top: 14px;
+  font-size: 14px;
+}
+
+.saved-details {
+  margin-top: 12px;
+  border: 1px solid #dfe5ee;
+  border-radius: 10px;
+  padding: 12px;
+  background: #f9fbff;
+}
+
+.saved-details h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.saved-details p {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+.item {
+  border: 1px solid #e4e8ef;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.item p {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+.meta {
+  color: #5f6772;
+}
+
+@media (max-width: 720px) {
+  .container {
+    padding: 16px 12px 28px;
+  }
+
+  header h1 {
+    font-size: 34px;
+    line-height: 1.15;
+  }
+
+  header p {
+    margin-top: 6px;
+    font-size: 16px;
+  }
+
+  .card {
+    padding: 14px;
+    border-radius: 10px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions button,
+  .recorder-actions button {
+    width: 100%;
+  }
+}
