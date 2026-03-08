@@ -1,5 +1,6 @@
 const fs = require("fs");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const DEFAULT_MODELS = ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash"];
 
 function detectChannel(text) {
   const value = (text || "").toLowerCase();
@@ -55,17 +56,43 @@ function parseJsonText(value) {
 
 function getAiModel() {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return { genAI: null, modelNames: [] };
   const genAI = new GoogleGenerativeAI(apiKey);
-  return genAI.getGenerativeModel({
-    model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
-  });
+  const preferred = (process.env.GEMINI_MODEL || "").trim();
+  const modelNames = [...new Set([preferred, ...DEFAULT_MODELS].filter(Boolean))];
+  return { genAI, modelNames };
+}
+
+function isModelNotFoundError(error) {
+  const message = error?.message || "";
+  return message.includes("404") || message.toLowerCase().includes("no longer available");
+}
+
+async function generateWithModelFallback(parts) {
+  const { genAI, modelNames } = getAiModel();
+  if (!genAI || !modelNames.length) {
+    return { text: "", modelUsed: "", error: new Error("Gemini API key missing.") };
+  }
+
+  let lastError = null;
+  for (const modelName of modelNames) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(parts);
+      return { text: result.response.text(), modelUsed: modelName, error: null };
+    } catch (error) {
+      lastError = error;
+      if (!isModelNotFoundError(error)) break;
+    }
+  }
+
+  return { text: "", modelUsed: "", error: lastError || new Error("Gemini call failed.") };
 }
 
 async function extractReminderDetails({ quickInput, audioFilePath, audioMimeType }) {
   const localFallback = fallbackExtract(quickInput);
-  const model = getAiModel();
-  if (!model) return localFallback;
+  const { genAI } = getAiModel();
+  if (!genAI) return localFallback;
 
   try {
     const prompt = `
@@ -105,14 +132,17 @@ Rules:
       parts.push({ text: "Also use the audio message to infer the reminder fields." });
     }
 
-    const result = await model.generateContent(parts);
-    const raw = result.response.text();
+    const generated = await generateWithModelFallback(parts);
+    if (generated.error) {
+      throw generated.error;
+    }
+    const raw = generated.text;
     const parsed = parseJsonText(raw);
     if (!parsed) return localFallback;
 
     return {
       usedAi: true,
-      aiReason: "Extracted using Gemini.",
+      aiReason: `Extracted using Gemini (${generated.modelUsed}).`,
       clientName: parsed.clientName || localFallback.clientName,
       email: parsed.email || localFallback.email,
       phone: parsed.phone || localFallback.phone,
@@ -135,8 +165,8 @@ Rules:
 }
 
 async function resolveReminderDateWithAi({ reminderText, nowIso }) {
-  const model = getAiModel();
-  if (!model || !reminderText || !reminderText.trim()) return "";
+  const { genAI } = getAiModel();
+  if (!genAI || !reminderText || !reminderText.trim()) return "";
 
   try {
     const prompt = `
@@ -153,11 +183,12 @@ Rules:
 - If not inferable, return empty string.
 `.trim();
 
-    const result = await model.generateContent([
+    const generated = await generateWithModelFallback([
       { text: prompt },
       { text: `Reminder text:\n${reminderText.trim()}` },
     ]);
-    const parsed = parseJsonText(result.response.text());
+    if (generated.error) return "";
+    const parsed = parseJsonText(generated.text);
     return parsed?.reminderDateIso || "";
   } catch (error) {
     return "";

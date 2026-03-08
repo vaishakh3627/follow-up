@@ -21,11 +21,44 @@ function initializeDb() {
         notify_timing TEXT DEFAULT 'morning_of',
         email_sent INTEGER DEFAULT 0,
         sms_sent INTEGER DEFAULT 0,
+        notification_attempts INTEGER DEFAULT 0,
+        next_attempt_at TEXT DEFAULT (datetime('now')),
+        notified_at TEXT,
         status TEXT DEFAULT 'pending',
         last_error TEXT,
         created_at TEXT DEFAULT (datetime('now'))
       )
     `);
+    // Backward-compatible schema migration for existing databases.
+    db.all("PRAGMA table_info(reminders)", [], (pragmaError, columns) => {
+      if (pragmaError) return;
+      const hasColumn = (name) => (columns || []).some((column) => column.name === name);
+
+      const ensureAttempts = (done) => {
+        if (hasColumn("notification_attempts")) return done();
+        return db.run("ALTER TABLE reminders ADD COLUMN notification_attempts INTEGER DEFAULT 0", () => done());
+      };
+
+      const ensureNextAttempt = (done) => {
+        if (hasColumn("next_attempt_at")) return done();
+        return db.run("ALTER TABLE reminders ADD COLUMN next_attempt_at TEXT", () => done());
+      };
+
+      const ensureNotifiedAt = (done) => {
+        if (hasColumn("notified_at")) return done();
+        return db.run("ALTER TABLE reminders ADD COLUMN notified_at TEXT", () => done());
+      };
+
+      ensureAttempts(() => {
+        ensureNextAttempt(() => {
+          ensureNotifiedAt(() => {
+            db.run("UPDATE reminders SET status = 'reminded' WHERE status = 'completed'", () => {});
+            db.run("UPDATE reminders SET next_attempt_at = datetime('now') WHERE next_attempt_at IS NULL", () => {});
+            db.run("UPDATE reminders SET notification_attempts = 0 WHERE notification_attempts IS NULL", () => {});
+          });
+        });
+      });
+    });
   });
 }
 

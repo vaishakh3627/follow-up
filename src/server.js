@@ -66,16 +66,62 @@ app.get("/api/health", (req, res) => {
 
 app.get("/api/reminders", async (req, res) => {
   try {
-    const reminders = await all(
+    const view = String(req.query.view || "all").toLowerCase();
+    const limitRaw = Number(req.query.limit);
+    const offsetRaw = Number(req.query.offset);
+    const hasPagination = Number.isFinite(limitRaw) || Number.isFinite(offsetRaw);
+
+    let whereClause = "";
+    if (view === "active") {
+      whereClause = "WHERE status = 'pending' AND datetime(reminder_at) >= datetime('now')";
+    } else if (view === "reminded") {
+      whereClause = "WHERE status = 'reminded'";
+    } else if (view === "failed") {
+      whereClause = "WHERE status = 'failed'";
+    }
+
+    if (!hasPagination) {
+      const reminders = await all(
+        `
+        SELECT *
+        FROM reminders
+        ${whereClause}
+        ORDER BY datetime(created_at) DESC
+        `
+      );
+      return res.json(reminders);
+    }
+
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 50) : 10;
+    const offset = Number.isFinite(offsetRaw) ? Math.max(Math.trunc(offsetRaw), 0) : 0;
+    const items = await all(
       `
       SELECT *
       FROM reminders
+      ${whereClause}
       ORDER BY datetime(created_at) DESC
+      LIMIT ? OFFSET ?
+      `,
+      [limit, offset]
+    );
+    const totalRow = await get(
+      `
+      SELECT COUNT(*) as total
+      FROM reminders
+      ${whereClause}
       `
     );
-    res.json(reminders);
+    const total = totalRow?.total || 0;
+
+    return res.json({
+      items,
+      total,
+      limit,
+      offset,
+      hasMore: offset + items.length < total,
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 });
 
@@ -179,10 +225,34 @@ app.post("/api/reminders", upload.single("audio"), async (req, res) => {
 
 app.patch("/api/reminders/:id/complete", async (req, res) => {
   try {
-    await run("UPDATE reminders SET status = 'completed' WHERE id = ?", [req.params.id]);
+    await run("UPDATE reminders SET status = 'reminded', notified_at = datetime('now') WHERE id = ?", [req.params.id]);
     const updated = await get("SELECT * FROM reminders WHERE id = ?", [req.params.id]);
     if (!updated) return res.status(404).json({ error: "Reminder not found" });
     return res.json(updated);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/reminders/:id", async (req, res) => {
+  try {
+    const existing = await get("SELECT * FROM reminders WHERE id = ?", [req.params.id]);
+    if (!existing) return res.status(404).json({ error: "Reminder not found" });
+
+    await run("DELETE FROM reminders WHERE id = ?", [req.params.id]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/reminders/cleanup-past", async (req, res) => {
+  try {
+    const before = await get("SELECT COUNT(*) as total FROM reminders");
+    await run("DELETE FROM reminders WHERE datetime(reminder_at) < datetime('now')");
+    const after = await get("SELECT COUNT(*) as total FROM reminders");
+    const removed = Math.max((before?.total || 0) - (after?.total || 0), 0);
+    return res.json({ ok: true, removed });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -201,5 +271,9 @@ app.use((err, req, res, next) => {
 app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
   startScheduler();
-  await runNotificationCycle();
+  try {
+    await runNotificationCycle();
+  } catch (error) {
+    console.error("Initial notification cycle failed:", error.message);
+  }
 });

@@ -3,61 +3,53 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Client Follow-Up Reminder</title>
+    <title>Remindly</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="container">
-      <header>
-        <h1>Client Follow-Up Reminder</h1>
-        <p>Drop a short note or audio. AI extracts client/date/channel and schedules your reminder.</p>
+    <main class="app-shell">
+      <header class="brand">
+        <div class="brand-icon">🔔</div>
+        <div>
+          <h1>Remindly</h1>
+          <p>Just tell me what to remind you about.</p>
+        </div>
       </header>
 
-      <section class="card">
-        <h2>Create Reminder</h2>
-        <form id="reminderForm" enctype="multipart/form-data">
-          <div class="grid">
-            <label class="full">
-              Quick Note
-              <textarea
-                name="quickInput"
-                rows="4"
-                placeholder="Example: remind me after ramzan to call Imran about final proposal, send sms"
-              ></textarea>
-            </label>
-
-            <label class="full">
-              Audio Note (optional)
-              <input name="audio" type="file" accept="audio/*" />
-            </label>
-
-            <div class="full recorder">
-              <p class="recorder-title">Or record directly</p>
-              <div class="recorder-actions">
-                <button type="button" id="startRecordBtn" class="secondary-btn">Start Recording</button>
-                <button type="button" id="stopRecordBtn" class="secondary-btn" disabled>Stop</button>
-                <button type="button" id="clearRecordBtn" class="secondary-btn" disabled>Clear</button>
-              </div>
-              <p id="recordStatus" class="meta">Recorder idle.</p>
-              <audio id="recordedPreview" controls class="recorded-preview hidden"></audio>
-            </div>
-          </div>
-
-          <p class="meta">
-            AI will detect phrases like `after sunday`, `call in moday`, `after ramzan`, `after onam`, `after vishu`, and choose channel (`email`, `sms`).
-          </p>
-
-          <div class="actions">
-            <button type="submit">Analyze with AI & Save</button>
-          </div>
+      <section class="composer-card">
+        <form id="captureForm" class="composer" enctype="multipart/form-data">
+          <button type="button" id="micBtn" class="icon-btn" aria-label="Record voice">🎤</button>
+          <input
+            id="quickInput"
+            name="quickInput"
+            type="text"
+            placeholder="Remind me to call client tomorrow at 3pm..."
+            autocomplete="off"
+          />
+          <button type="submit" id="sendBtn" class="send-btn" aria-label="Send reminder">➤</button>
+          <input id="audioUpload" name="audio" type="file" accept="audio/*" class="hidden" />
         </form>
+        <p id="recordStatus" class="record-status">Recorder idle.</p>
+        <audio id="recordedPreview" controls class="recorded-preview hidden"></audio>
         <p id="message" class="message"></p>
-        <div id="lastSaved" class="saved-details hidden"></div>
       </section>
 
-      <section class="card">
-        <h2>Pending Reminders</h2>
-        <div id="reminderList" class="list"></div>
+      <section class="list-card">
+        <h2>Active reminders</h2>
+        <p class="list-meta"><span id="upcomingCount">0</span> active</p>
+        <div id="reminderList" class="reminder-list"></div>
+        <div class="pagination">
+          <button type="button" id="prevPageBtn" class="page-btn">Previous</button>
+          <span id="pageInfo">Page 1</span>
+          <button type="button" id="nextPageBtn" class="page-btn">Next</button>
+        </div>
+        <h3 class="subhead">Reminded (last 10)</h3>
+        <div id="remindedList" class="reminder-list"></div>
+      </section>
+
+      <section class="saved-card hidden" id="savedCard">
+        <h3>Saved Reminder Details</h3>
+        <div id="lastSaved"></div>
       </section>
     </main>
 
