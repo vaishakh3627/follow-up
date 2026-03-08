@@ -30,6 +30,12 @@
           <input id="audioUpload" name="audio" type="file" accept="audio/*" class="hidden" />
         </form>
         <p id="recordStatus" class="record-status">Recorder idle.</p>
+        <div class="audio-tools">
+          <button type="button" id="pauseBtn" class="page-btn">Pause</button>
+          <button type="button" id="stopBtn" class="page-btn">Stop</button>
+          <button type="button" id="uploadBtn" class="page-btn">Upload Audio</button>
+          <button type="button" id="clearAudioBtn" class="page-btn">Clear Audio</button>
+        </div>
         <audio id="recordedPreview" controls class="recorded-preview hidden"></audio>
         <p id="message" class="message"></p>
       </section>

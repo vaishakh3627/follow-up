@@ -13,15 +13,27 @@ const lastSaved = document.getElementById("lastSaved");
 const prevPageBtn = document.getElementById("prevPageBtn");
 const nextPageBtn = document.getElementById("nextPageBtn");
 const pageInfo = document.getElementById("pageInfo");
+const audioUpload = document.getElementById("audioUpload");
+const uploadBtn = document.getElementById("uploadBtn");
+const clearAudioBtn = document.getElementById("clearAudioBtn");
+const pauseBtn = document.getElementById("pauseBtn");
+const stopBtn = document.getElementById("stopBtn");
 
 let mediaRecorder = null;
-let recordingStream = null;
+let micStream = null;
 let recordedBlob = null;
 let recordedMimeType = "";
 let audioChunks = [];
 let previewUrl = "";
 const PAGE_SIZE = 10;
 let currentOffset = 0;
+
+function updateRecordButtons() {
+  const state = mediaRecorder?.state || "inactive";
+  pauseBtn.disabled = state === "inactive";
+  stopBtn.disabled = state === "inactive";
+  pauseBtn.textContent = state === "paused" ? "Resume" : "Pause";
+}
 
 function renderMessage(text, isError = false) {
   message.textContent = text;
@@ -57,15 +69,14 @@ function reminderCard(reminder) {
       <p class="reminder-title">${escapeHtml(title)}</p>
       <p class="reminder-note">${escapeHtml(reminder.reminder_input || "")}</p>
       <p class="reminder-when">🔔 ${formatReminderTime(reminder.reminder_at)}</p>
+      <div class="audio-tools">
+        <button type="button" class="page-btn delete-reminder-btn" data-id="${reminder.id}">Delete</button>
+      </div>
     </article>
   `;
 }
 
 function clearRecordedAudio() {
-  if (recordingStream) {
-    recordingStream.getTracks().forEach((track) => track.stop());
-    recordingStream = null;
-  }
   if (previewUrl) {
     URL.revokeObjectURL(previewUrl);
     previewUrl = "";
@@ -77,6 +88,22 @@ function clearRecordedAudio() {
   recordedPreview.classList.add("hidden");
   micBtn.classList.remove("recording");
   recordStatus.textContent = "Recorder idle.";
+  updateRecordButtons();
+}
+
+async function getOrCreateMicStream() {
+  if (micStream && micStream.active) return micStream;
+  micStream = await navigator.mediaDevices.getUserMedia({
+    // Lower-latency capture: disable heavy voice processing that can cause startup clipping.
+    audio: {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      channelCount: 1,
+      latency: 0,
+    },
+  });
+  return micStream;
 }
 
 function getPreferredMimeType() {
@@ -121,11 +148,7 @@ async function loadReminders() {
 }
 
 async function toggleRecording() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.requestData();
-    mediaRecorder.stop();
-    return;
-  }
+  if (mediaRecorder && mediaRecorder.state !== "inactive") return;
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === "undefined") {
     renderMessage("Audio recording is not supported in this browser.", true);
@@ -134,10 +157,15 @@ async function toggleRecording() {
 
   try {
     clearRecordedAudio();
-    recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordStatus.textContent = "Starting recorder...";
+    const stream = await getOrCreateMicStream();
     const preferred = getPreferredMimeType();
-    mediaRecorder = preferred ? new MediaRecorder(recordingStream, { mimeType: preferred }) : new MediaRecorder(recordingStream);
+    mediaRecorder = preferred ? new MediaRecorder(stream, { mimeType: preferred }) : new MediaRecorder(stream);
     audioChunks = [];
+
+    mediaRecorder.addEventListener("start", () => {
+      recordStatus.textContent = "Recording started. Speak now.";
+    });
 
     mediaRecorder.addEventListener("dataavailable", (event) => {
       if (event.data?.size) audioChunks.push(event.data);
@@ -155,18 +183,16 @@ async function toggleRecording() {
         recordStatus.textContent = "No audio detected.";
       }
 
-      if (recordingStream) {
-        recordingStream.getTracks().forEach((track) => track.stop());
-        recordingStream = null;
-      }
       micBtn.classList.remove("recording");
       mediaRecorder = null;
+      updateRecordButtons();
     });
 
-    mediaRecorder.start(1000);
+    // Start without timeslice to avoid browser-specific delayed chunk behavior.
+    mediaRecorder.start();
     micBtn.classList.add("recording");
-    recordStatus.textContent = "Recording... tap mic again to stop.";
     renderMessage("");
+    updateRecordButtons();
   } catch (error) {
     renderMessage(`Microphone error: ${error.message}`, true);
     clearRecordedAudio();
@@ -184,6 +210,67 @@ function renderSavedDetails(saved, extraction) {
 }
 
 micBtn.addEventListener("click", toggleRecording);
+pauseBtn.addEventListener("click", () => {
+  if (!mediaRecorder) return;
+  if (mediaRecorder.state === "recording") {
+    mediaRecorder.pause();
+    recordStatus.textContent = "Recording paused.";
+  } else if (mediaRecorder.state === "paused") {
+    mediaRecorder.resume();
+    recordStatus.textContent = "Recording resumed.";
+  }
+  updateRecordButtons();
+});
+
+stopBtn.addEventListener("click", () => {
+  if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+  mediaRecorder.requestData();
+  mediaRecorder.stop();
+  recordStatus.textContent = "Processing recording...";
+  updateRecordButtons();
+});
+uploadBtn.addEventListener("click", () => {
+  audioUpload.click();
+});
+
+clearAudioBtn.addEventListener("click", () => {
+  clearRecordedAudio();
+  renderMessage("Audio cleared. Record or upload again.");
+});
+
+audioUpload.addEventListener("change", () => {
+  const file = audioUpload.files?.[0];
+  if (!file) return;
+
+  clearRecordedAudio();
+  recordedBlob = file;
+  recordedMimeType = file.type || "audio/webm";
+  previewUrl = URL.createObjectURL(file);
+  recordedPreview.src = previewUrl;
+  recordedPreview.classList.remove("hidden");
+  recordStatus.textContent = `Using uploaded audio: ${file.name}`;
+  renderMessage("");
+});
+
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest(".delete-reminder-btn");
+  if (!button) return;
+  const id = button.dataset.id;
+  if (!id) return;
+  if (!window.confirm("Delete this pending reminder?")) return;
+
+  try {
+    const response = await fetch(`/api/reminders/${id}`, { method: "DELETE" });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "Failed to delete reminder.");
+    }
+    renderMessage("Pending reminder deleted.");
+    await loadReminders();
+  } catch (error) {
+    renderMessage(error.message, true);
+  }
+});
 prevPageBtn.addEventListener("click", async () => {
   currentOffset = Math.max(currentOffset - PAGE_SIZE, 0);
   await loadReminders();
@@ -242,3 +329,11 @@ form.addEventListener("submit", async (event) => {
 loadReminders().catch(() => {
   renderMessage("Failed to load reminders.", true);
 });
+
+window.addEventListener("beforeunload", () => {
+  if (micStream) {
+    micStream.getTracks().forEach((track) => track.stop());
+  }
+});
+
+updateRecordButtons();

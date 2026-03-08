@@ -213,15 +213,9 @@ function parseReminderDate(input, now = new Date()) {
   return { date: normalized, reason: "Parsed using natural language date parser." };
 }
 
-function computeTriggerAt(reminderAtIso, notifyTiming) {
+function computeTriggerAt(reminderAtIso, notifyTiming, reminderInput = "") {
   const reminderDate = new Date(reminderAtIso);
   if (Number.isNaN(reminderDate.getTime())) return null;
-  const now = new Date();
-
-  const isSameDayAsNow =
-    reminderDate.getFullYear() === now.getFullYear() &&
-    reminderDate.getMonth() === now.getMonth() &&
-    reminderDate.getDate() === now.getDate();
 
   if (notifyTiming === "one_day_before") {
     const trigger = new Date(reminderDate);
@@ -229,8 +223,11 @@ function computeTriggerAt(reminderAtIso, notifyTiming) {
     return setToMorning(trigger);
   }
 
-  // For same-day reminders, preserve the exact requested time (e.g. 10 PM today).
-  if (isSameDayAsNow) {
+  const explicitTimeInInput = hasExplicitTime(reminderInput || "");
+  const hasNonMorningTime = reminderDate.getHours() !== 9 || reminderDate.getMinutes() !== 0;
+
+  // If user provided a specific time (e.g. 2 PM), notify at that exact time.
+  if (explicitTimeInInput || hasNonMorningTime) {
     return reminderDate;
   }
 

@@ -112,6 +112,12 @@ body {
   font-size: 14px;
 }
 
+.audio-tools {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
 .recorded-preview {
   margin-top: 10px;
   width: 100%;
@@ -237,5 +243,9 @@ body {
   .reminder-when,
   .record-status {
     font-size: 14px;
+  }
+
+  .audio-tools {
+    flex-wrap: wrap;
   }
 }

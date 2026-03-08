@@ -1,10 +1,10 @@
-const cron = require("node-cron");
 const { all, run } = require("./db");
 const { computeTriggerAt } = require("./dateParser");
 const { sendEmail, sendSms } = require("./notifications");
 
 const RETRY_MINUTES = [1, 5, 15, 60];
 const MAX_ATTEMPTS = 6;
+let cycleInProgress = false;
 
 function getRetryDelayMinutes(attempt) {
   return RETRY_MINUTES[Math.min(Math.max(attempt - 1, 0), RETRY_MINUTES.length - 1)];
@@ -58,18 +58,50 @@ async function processReminder(reminder) {
   let lastError = null;
   const errors = [];
 
-  try {
-    if (reminder.notify_email && !reminder.email_sent) {
+  if (reminder.notify_email && !reminder.email_sent) {
+    try {
       await sendEmail(reminder);
       emailSent = 1;
+      await safeRunWithFallback(
+        `
+          UPDATE reminders
+          SET email_sent = 1, last_error = NULL
+          WHERE id = ?
+        `,
+        [reminder.id],
+        `
+          UPDATE reminders
+          SET email_sent = 1, last_error = NULL
+          WHERE id = ?
+        `,
+        [reminder.id]
+      );
+    } catch (error) {
+      errors.push(`email: ${error.message}`);
     }
+  }
 
-    if (reminder.notify_sms && !reminder.sms_sent) {
+  if (reminder.notify_sms && !reminder.sms_sent) {
+    try {
       await sendSms(reminder);
       smsSent = 1;
+      await safeRunWithFallback(
+        `
+          UPDATE reminders
+          SET sms_sent = 1, last_error = NULL
+          WHERE id = ?
+        `,
+        [reminder.id],
+        `
+          UPDATE reminders
+          SET sms_sent = 1, last_error = NULL
+          WHERE id = ?
+        `,
+        [reminder.id]
+      );
+    } catch (error) {
+      errors.push(`sms: ${error.message}`);
     }
-  } catch (error) {
-    errors.push(error.message);
   }
 
   const doneWithNotifications =
@@ -134,26 +166,45 @@ async function runNotificationCycle() {
 
   const now = new Date();
   for (const reminder of pending) {
-    const triggerAt = computeTriggerAt(reminder.reminder_at, reminder.notify_timing);
+    const triggerAt = computeTriggerAt(reminder.reminder_at, reminder.notify_timing, reminder.reminder_input);
     if (!triggerAt) continue;
     if (triggerAt <= now) {
+      const claimResult = await run(
+        `
+          UPDATE reminders
+          SET status = 'processing'
+          WHERE
+            id = ?
+            AND status = 'pending'
+            AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
+        `,
+        [reminder.id]
+      );
+      if (!claimResult?.changes) {
+        continue;
+      }
+
       // eslint-disable-next-line no-await-in-loop
-      await processReminder(reminder);
+      await processReminder({ ...reminder, status: "processing" });
     }
   }
 }
 
 function startScheduler() {
   const runSafeCycle = async () => {
+    if (cycleInProgress) return;
+    cycleInProgress = true;
     try {
       await runNotificationCycle();
     } catch (error) {
       // Keep scheduler alive even if one cycle fails.
       console.error("Scheduler cycle failed:", error.message);
+    } finally {
+      cycleInProgress = false;
     }
   };
 
-  cron.schedule("*/1 * * * *", runSafeCycle);
+  // Single worker loop to avoid duplicate trigger races.
   setInterval(runSafeCycle, 15000);
 }
 
