@@ -1,7 +1,5 @@
 const authCard = document.getElementById("authCard");
-const userCard = document.getElementById("userCard");
-const appCard = document.getElementById("appCard");
-const listCard = document.getElementById("listCard");
+const appContainer = document.getElementById("appContainer");
 const authMessage = document.getElementById("authMessage");
 const registerForm = document.getElementById("registerForm");
 const loginForm = document.getElementById("loginForm");
@@ -9,7 +7,14 @@ const showRegisterBtn = document.getElementById("showRegisterBtn");
 const showLoginBtn = document.getElementById("showLoginBtn");
 const profileForm = document.getElementById("profileForm");
 const logoutBtn = document.getElementById("logoutBtn");
-const userLine = document.getElementById("userLine");
+const navDashboard = document.getElementById("navDashboard");
+const navProfile = document.getElementById("navProfile");
+const dashboardPage = document.getElementById("dashboardPage");
+const profilePage = document.getElementById("profilePage");
+const profileName = document.getElementById("profileName");
+const profileEmail = document.getElementById("profileEmail");
+const profileInitials = document.getElementById("profileInitials");
+const profileMessage = document.getElementById("profileMessage");
 
 const form = document.getElementById("captureForm");
 const quickInput = document.getElementById("quickInput");
@@ -43,21 +48,42 @@ const PAGE_SIZE = 10;
 let currentOffset = 0;
 
 function renderMessage(text, isError = false) {
+  if (!message) return;
   message.textContent = text;
-  message.style.color = isError ? "#cc3b31" : "#2f6a43";
+  message.style.color = isError ? "#dc2626" : "#166534";
+  if (text) {
+    message.style.background = isError ? "#fee2e2" : "#f0fdf4";
+    message.style.border = isError ? "1px solid #fecaca" : "1px solid #bbf7d0";
+  }
 }
 
 function renderAuthMessage(text, isError = false) {
+  if (!authMessage) return;
   authMessage.textContent = text;
-  authMessage.style.color = isError ? "#cc3b31" : "#2f6a43";
+  authMessage.style.color = isError ? "#dc2626" : "#166534";
+  if (text) {
+    authMessage.style.background = isError ? "#fee2e2" : "#f0fdf4";
+    authMessage.style.border = isError ? "1px solid #fecaca" : "1px solid #bbf7d0";
+    authMessage.style.padding = "8px 12px";
+    authMessage.style.borderRadius = "8px";
+  }
 }
 
 function setAppAuthenticated(isAuthenticated) {
   authCard.classList.toggle("hidden", isAuthenticated);
-  userCard.classList.toggle("hidden", !isAuthenticated);
-  appCard.classList.toggle("hidden", !isAuthenticated);
-  listCard.classList.toggle("hidden", !isAuthenticated);
-  if (!isAuthenticated) savedCard.classList.add("hidden");
+  appContainer.classList.toggle("hidden", !isAuthenticated);
+  if (!isAuthenticated) {
+    savedCard?.classList.add("hidden");
+    showPage("dashboard");
+  }
+}
+
+function showPage(page) {
+  const isDashboard = page === "dashboard";
+  dashboardPage.classList.toggle("hidden", !isDashboard);
+  profilePage.classList.toggle("hidden", isDashboard);
+  navDashboard.classList.toggle("active-nav-tab", isDashboard);
+  navProfile.classList.toggle("active-nav-tab", !isDashboard);
 }
 
 function showAuthMode(mode) {
@@ -104,7 +130,7 @@ function reminderCard(reminder) {
       <p class="reminder-note">${escapeHtml(reminder.reminder_input || "")}</p>
       <p class="reminder-when">🔔 ${formatReminderTime(reminder.reminder_at)}</p>
       <div class="audio-tools">
-        <button type="button" class="page-btn delete-reminder-btn" data-id="${reminder.id}">Delete</button>
+        <button type="button" class="btn-secondary delete-reminder-btn" data-id="${reminder.id}">Delete</button>
       </div>
     </article>
   `;
@@ -129,10 +155,30 @@ async function fetchMe() {
 }
 
 function bindProfile(user) {
-  userLine.textContent = `Logged in as ${user.name} (${user.email})`;
-  profileForm.elements.name.value = user.name || "";
-  profileForm.elements.alertEmail.value = user.alert_email_to || "";
-  profileForm.elements.alertPhone.value = user.alert_phone_to || "";
+  currentUser = user;
+  // Update profile page display
+  if (profileName) profileName.textContent = user.name || "User";
+  if (profileEmail) profileEmail.textContent = user.email || "";
+  if (profileInitials) {
+    const initials = (user.name || "U")
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+    profileInitials.textContent = initials || "U";
+  }
+  // Update profile form
+  if (profileForm) {
+    const nameInput = document.getElementById("profileNameInput");
+    const emailInput = document.getElementById("profileEmailInput");
+    const alertEmailInput = document.getElementById("profileAlertEmailInput");
+    const alertPhoneInput = document.getElementById("profileAlertPhoneInput");
+    if (nameInput) nameInput.value = user.name || "";
+    if (emailInput) emailInput.value = user.email || "";
+    if (alertEmailInput) alertEmailInput.value = user.alert_email_to || "";
+    if (alertPhoneInput) alertPhoneInput.value = user.alert_phone_to || "";
+  }
 }
 
 function clearRecordedAudio() {
@@ -320,9 +366,29 @@ profileForm.addEventListener("submit", async (event) => {
     });
     currentUser = data.user;
     bindProfile(currentUser);
-    renderMessage("Profile updated.");
+    if (profileMessage) {
+      profileMessage.textContent = "Profile updated successfully!";
+      profileMessage.style.color = "#166534";
+      profileMessage.style.background = "#f0fdf4";
+      profileMessage.style.border = "1px solid #bbf7d0";
+      profileMessage.style.padding = "8px 12px";
+      profileMessage.style.borderRadius = "8px";
+      setTimeout(() => {
+        profileMessage.textContent = "";
+        profileMessage.style.background = "";
+        profileMessage.style.border = "";
+        profileMessage.style.padding = "";
+      }, 3000);
+    }
   } catch (error) {
-    renderMessage(error.message, true);
+    if (profileMessage) {
+      profileMessage.textContent = error.message;
+      profileMessage.style.color = "#dc2626";
+      profileMessage.style.background = "#fee2e2";
+      profileMessage.style.border = "1px solid #fecaca";
+      profileMessage.style.padding = "8px 12px";
+      profileMessage.style.borderRadius = "8px";
+    }
   }
 });
 
@@ -335,6 +401,9 @@ logoutBtn.addEventListener("click", async () => {
 
 showRegisterBtn.addEventListener("click", () => showAuthMode("register"));
 showLoginBtn.addEventListener("click", () => showAuthMode("login"));
+
+navDashboard.addEventListener("click", () => showPage("dashboard"));
+navProfile.addEventListener("click", () => showPage("profile"));
 
 micBtn.addEventListener("click", toggleRecording);
 pauseBtn.addEventListener("click", () => {

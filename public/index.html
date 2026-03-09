@@ -8,19 +8,16 @@
   </head>
   <body>
     <main class="app-shell">
-      <header class="brand">
-        <div class="brand-icon">🔔</div>
-        <div>
-          <h1>Remindly</h1>
-          <p>Just tell me what to remind you about.</p>
-        </div>
-      </header>
-
+      <!-- Auth Section -->
       <section class="composer-card" id="authCard">
-        <h3 style="margin-top:0;">Account Access</h3>
+        <div class="auth-header">
+          <div class="brand-icon">🔔</div>
+          <h2>Welcome to Remindly</h2>
+          <p class="auth-subtitle">Just tell me what to remind you about.</p>
+        </div>
         <div class="auth-tabs">
-          <button type="button" id="showRegisterBtn" class="page-btn auth-tab active-tab">Register</button>
-          <button type="button" id="showLoginBtn" class="page-btn auth-tab">Login</button>
+          <button type="button" id="showRegisterBtn" class="auth-tab active-tab">Register</button>
+          <button type="button" id="showLoginBtn" class="auth-tab">Login</button>
         </div>
         <form id="registerForm" class="auth-form">
           <input name="name" type="text" placeholder="Full name" required />
@@ -28,68 +25,131 @@
           <input name="password" type="password" placeholder="Password (min 6 chars)" required />
           <input name="alertEmail" type="email" placeholder="Alert email (where reminders should come)" required />
           <input name="alertPhone" type="text" placeholder="Alert phone (optional for SMS)" />
-          <button type="submit" class="page-btn">Register</button>
+          <button type="submit" class="btn-primary">Create Account</button>
         </form>
-        <form id="loginForm" class="auth-form hidden" style="margin-top:10px;">
+        <form id="loginForm" class="auth-form hidden">
           <input name="email" type="email" placeholder="Email" required />
           <input name="password" type="password" placeholder="Password" required />
-          <button type="submit" class="page-btn">Login</button>
+          <button type="submit" class="btn-primary">Sign In</button>
         </form>
         <p id="authMessage" class="message"></p>
       </section>
 
-      <section class="composer-card hidden" id="userCard">
-        <p id="userLine" class="list-meta">Logged in</p>
-        <form id="profileForm" class="auth-form">
-          <input name="name" type="text" placeholder="Name" required />
-          <input name="alertEmail" type="email" placeholder="Alert email" required />
-          <input name="alertPhone" type="text" placeholder="Alert phone (optional)" />
-          <button type="submit" class="page-btn">Update Profile</button>
-          <button type="button" id="logoutBtn" class="page-btn">Logout</button>
-        </form>
-      </section>
+      <!-- App Navigation & Content (hidden until authenticated) -->
+      <div class="app-container hidden" id="appContainer">
+        <!-- Top Navigation -->
+        <nav class="top-nav">
+          <div class="nav-brand">
+            <div class="brand-icon-small">🔔</div>
+            <span class="brand-name">Remindly</span>
+          </div>
+          <div class="nav-tabs">
+            <button type="button" id="navDashboard" class="nav-tab active-nav-tab">
+              <span class="nav-icon">📋</span>
+              <span>Dashboard</span>
+            </button>
+            <button type="button" id="navProfile" class="nav-tab">
+              <span class="nav-icon">👤</span>
+              <span>Profile</span>
+            </button>
+          </div>
+        </nav>
 
-      <section class="composer-card hidden" id="appCard">
-        <form id="captureForm" class="composer" enctype="multipart/form-data">
-          <button type="button" id="micBtn" class="icon-btn" aria-label="Record voice">🎤</button>
-          <input
-            id="quickInput"
-            name="quickInput"
-            type="text"
-            placeholder="Remind me to call client tomorrow at 3pm..."
-            autocomplete="off"
-          />
-          <button type="submit" id="sendBtn" class="send-btn" aria-label="Send reminder">➤</button>
-          <input id="audioUpload" name="audio" type="file" accept="audio/*" class="hidden" />
-        </form>
-        <p id="recordStatus" class="record-status">Recorder idle.</p>
-        <div class="audio-tools">
-          <button type="button" id="pauseBtn" class="page-btn">Pause</button>
-          <button type="button" id="stopBtn" class="page-btn">Stop</button>
-          <button type="button" id="uploadBtn" class="page-btn">Upload Audio</button>
-          <button type="button" id="clearAudioBtn" class="page-btn">Clear Audio</button>
+        <!-- Dashboard Page -->
+        <div class="page-content" id="dashboardPage">
+          <section class="composer-card">
+            <form id="captureForm" class="composer" enctype="multipart/form-data">
+              <button type="button" id="micBtn" class="icon-btn" aria-label="Record voice">🎤</button>
+              <input
+                id="quickInput"
+                name="quickInput"
+                type="text"
+                placeholder="Remind me to call client tomorrow at 3pm..."
+                autocomplete="off"
+              />
+              <button type="submit" id="sendBtn" class="send-btn" aria-label="Send reminder">➤</button>
+              <input id="audioUpload" name="audio" type="file" accept="audio/*" class="hidden" />
+            </form>
+            <p id="recordStatus" class="record-status">Recorder idle.</p>
+            <div class="audio-tools">
+              <button type="button" id="pauseBtn" class="btn-secondary">Pause</button>
+              <button type="button" id="stopBtn" class="btn-secondary">Stop</button>
+              <button type="button" id="uploadBtn" class="btn-secondary">Upload Audio</button>
+              <button type="button" id="clearAudioBtn" class="btn-secondary">Clear Audio</button>
+            </div>
+            <audio id="recordedPreview" controls class="recorded-preview hidden"></audio>
+            <p id="message" class="message"></p>
+          </section>
+
+          <section class="list-card">
+            <div class="section-header">
+              <h2>Active Reminders</h2>
+              <span class="badge" id="upcomingCount">0</span>
+            </div>
+            <div id="reminderList" class="reminder-list"></div>
+            <div class="pagination">
+              <button type="button" id="prevPageBtn" class="btn-secondary">Previous</button>
+              <span id="pageInfo" class="page-info">Page 1</span>
+              <button type="button" id="nextPageBtn" class="btn-secondary">Next</button>
+            </div>
+          </section>
+
+          <section class="list-card">
+            <h3 class="subhead">Recently Completed</h3>
+            <div id="remindedList" class="reminder-list"></div>
+          </section>
+
+          <section class="saved-card hidden" id="savedCard">
+            <h3>Saved Reminder Details</h3>
+            <div id="lastSaved"></div>
+          </section>
         </div>
-        <audio id="recordedPreview" controls class="recorded-preview hidden"></audio>
-        <p id="message" class="message"></p>
-      </section>
 
-      <section class="list-card hidden" id="listCard">
-        <h2>Active reminders</h2>
-        <p class="list-meta"><span id="upcomingCount">0</span> active</p>
-        <div id="reminderList" class="reminder-list"></div>
-        <div class="pagination">
-          <button type="button" id="prevPageBtn" class="page-btn">Previous</button>
-          <span id="pageInfo">Page 1</span>
-          <button type="button" id="nextPageBtn" class="page-btn">Next</button>
+        <!-- Profile Page -->
+        <div class="page-content hidden" id="profilePage">
+          <section class="profile-card">
+            <div class="profile-header">
+              <div class="profile-avatar">
+                <span id="profileInitials">U</span>
+              </div>
+              <div class="profile-info">
+                <h2 id="profileName">User Name</h2>
+                <p id="profileEmail" class="profile-email">user@example.com</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="profile-card">
+            <h3 class="section-title">Account Settings</h3>
+            <p id="profileMessage" class="message"></p>
+            <form id="profileForm" class="profile-form">
+              <div class="form-group">
+                <label for="profileNameInput">Full Name</label>
+                <input id="profileNameInput" name="name" type="text" placeholder="Your full name" required />
+              </div>
+              <div class="form-group">
+                <label for="profileEmailInput">Email</label>
+                <input id="profileEmailInput" name="email" type="email" placeholder="your@email.com" disabled />
+                <small class="form-help">Email cannot be changed</small>
+              </div>
+              <div class="form-group">
+                <label for="profileAlertEmailInput">Notification Email</label>
+                <input id="profileAlertEmailInput" name="alertEmail" type="email" placeholder="Where reminders should come" required />
+                <small class="form-help">This is where you'll receive reminder notifications</small>
+              </div>
+              <div class="form-group">
+                <label for="profileAlertPhoneInput">Notification Phone</label>
+                <input id="profileAlertPhoneInput" name="alertPhone" type="text" placeholder="+1234567890 (optional)" />
+                <small class="form-help">For SMS notifications (optional)</small>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn-primary">Save Changes</button>
+                <button type="button" id="logoutBtn" class="btn-danger">Logout</button>
+              </div>
+            </form>
+          </section>
         </div>
-        <h3 class="subhead">Reminded (last 10)</h3>
-        <div id="remindedList" class="reminder-list"></div>
-      </section>
-
-      <section class="saved-card hidden" id="savedCard">
-        <h3>Saved Reminder Details</h3>
-        <div id="lastSaved"></div>
-      </section>
+      </div>
     </main>
 
     <script src="/app.js"></script>
