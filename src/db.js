@@ -7,8 +7,21 @@ const db = new sqlite3.Database(dbPath);
 function initializeDb() {
   db.serialize(() => {
     db.run(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        alert_email_to TEXT NOT NULL,
+        alert_phone_to TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    db.run(`
       CREATE TABLE IF NOT EXISTS reminders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
         client_name TEXT,
         email TEXT,
         phone TEXT,
@@ -19,6 +32,8 @@ function initializeDb() {
         notify_email INTEGER DEFAULT 1,
         notify_sms INTEGER DEFAULT 0,
         notify_timing TEXT DEFAULT 'morning_of',
+        alert_email_to TEXT,
+        alert_phone_to TEXT,
         email_sent INTEGER DEFAULT 0,
         sms_sent INTEGER DEFAULT 0,
         notification_attempts INTEGER DEFAULT 0,
@@ -26,13 +41,29 @@ function initializeDb() {
         notified_at TEXT,
         status TEXT DEFAULT 'pending',
         last_error TEXT,
-        created_at TEXT DEFAULT (datetime('now'))
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id)
       )
     `);
     // Backward-compatible schema migration for existing databases.
     db.all("PRAGMA table_info(reminders)", [], (pragmaError, columns) => {
       if (pragmaError) return;
       const hasColumn = (name) => (columns || []).some((column) => column.name === name);
+
+      const ensureUserId = (done) => {
+        if (hasColumn("user_id")) return done();
+        return db.run("ALTER TABLE reminders ADD COLUMN user_id INTEGER", () => done());
+      };
+
+      const ensureAlertEmail = (done) => {
+        if (hasColumn("alert_email_to")) return done();
+        return db.run("ALTER TABLE reminders ADD COLUMN alert_email_to TEXT", () => done());
+      };
+
+      const ensureAlertPhone = (done) => {
+        if (hasColumn("alert_phone_to")) return done();
+        return db.run("ALTER TABLE reminders ADD COLUMN alert_phone_to TEXT", () => done());
+      };
 
       const ensureAttempts = (done) => {
         if (hasColumn("notification_attempts")) return done();
@@ -49,12 +80,29 @@ function initializeDb() {
         return db.run("ALTER TABLE reminders ADD COLUMN notified_at TEXT", () => done());
       };
 
-      ensureAttempts(() => {
-        ensureNextAttempt(() => {
-          ensureNotifiedAt(() => {
-            db.run("UPDATE reminders SET status = 'reminded' WHERE status = 'completed'", () => {});
-            db.run("UPDATE reminders SET next_attempt_at = datetime('now') WHERE next_attempt_at IS NULL", () => {});
-            db.run("UPDATE reminders SET notification_attempts = 0 WHERE notification_attempts IS NULL", () => {});
+      ensureUserId(() => {
+        db.run("CREATE INDEX IF NOT EXISTS idx_reminders_user_id ON reminders(user_id)", () => {});
+        ensureAlertEmail(() => {
+          ensureAlertPhone(() => {
+            ensureAttempts(() => {
+              ensureNextAttempt(() => {
+                ensureNotifiedAt(() => {
+                  db.run("UPDATE reminders SET status = 'reminded' WHERE status = 'completed'", () => {});
+                  db.run(
+                    "UPDATE reminders SET alert_email_to = COALESCE(alert_email_to, ?) WHERE alert_email_to IS NULL",
+                    [process.env.ALERT_EMAIL_TO || process.env.SMTP_USER || ""],
+                    () => {}
+                  );
+                  db.run(
+                    "UPDATE reminders SET alert_phone_to = COALESCE(alert_phone_to, ?) WHERE alert_phone_to IS NULL",
+                    [process.env.ALERT_PHONE_TO || ""],
+                    () => {}
+                  );
+                  db.run("UPDATE reminders SET next_attempt_at = datetime('now') WHERE next_attempt_at IS NULL", () => {});
+                  db.run("UPDATE reminders SET notification_attempts = 0 WHERE notification_attempts IS NULL", () => {});
+                });
+              });
+            });
           });
         });
       });

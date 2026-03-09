@@ -108,7 +108,7 @@ async function sendEmail(reminder) {
     throw new Error("Email is not configured. Add SMTP_* values in .env.");
   }
 
-  const targetEmail = process.env.ALERT_EMAIL_TO || process.env.SMTP_USER;
+  const targetEmail = reminder.alert_email_to || process.env.ALERT_EMAIL_TO || process.env.SMTP_USER;
   if (!targetEmail) {
     throw new Error("No ALERT_EMAIL_TO configured for reminder notifications.");
   }
@@ -128,7 +128,7 @@ async function sendSms(reminder) {
     throw new Error("SMS is not configured. Add TWILIO_* values in .env.");
   }
 
-  const targetPhone = process.env.ALERT_PHONE_TO;
+  const targetPhone = reminder.alert_phone_to || process.env.ALERT_PHONE_TO;
   if (!targetPhone) {
     throw new Error("No ALERT_PHONE_TO configured for reminder notifications.");
   }

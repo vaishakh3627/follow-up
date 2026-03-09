@@ -2,6 +2,8 @@ require("dotenv").config();
 const path = require("path");
 const fs = require("fs");
 const express = require("express");
+const session = require("express-session");
+const bcrypt = require("bcryptjs");
 const multer = require("multer");
 const { initializeDb, run, all, get } = require("./db");
 const { parseReminderDate } = require("./dateParser");
@@ -57,28 +59,167 @@ initializeDb();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "follow-up-dev-secret",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: false,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    },
+  })
+);
 app.use("/uploads", express.static(uploadsDir));
 app.use(express.static(path.join(__dirname, "..", "public")));
+
+function withoutSensitiveUserFields(user) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    alert_email_to: user.alert_email_to,
+    alert_phone_to: user.alert_phone_to,
+    created_at: user.created_at,
+  };
+}
+
+async function requireAuth(req, res, next) {
+  const userId = req.session?.userId;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  const user = await get("SELECT * FROM users WHERE id = ?", [userId]);
+  if (!user) {
+    req.session.userId = null;
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  req.currentUser = user;
+  return next();
+}
 
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, service: "follow-up-reminder" });
 });
 
-app.get("/api/reminders", async (req, res) => {
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { name, email, password, alertEmail, alertPhone } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "Name, email, and password are required." });
+    }
+    if (String(password).length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters." });
+    }
+
+    const existing = await get("SELECT id FROM users WHERE email = ?", [String(email).trim().toLowerCase()]);
+    if (existing) {
+      return res.status(409).json({ error: "Email already registered." });
+    }
+
+    const passwordHash = await bcrypt.hash(String(password), 10);
+    const result = await run(
+      `
+      INSERT INTO users (name, email, password_hash, alert_email_to, alert_phone_to)
+      VALUES (?, ?, ?, ?, ?)
+      `,
+      [
+        String(name).trim(),
+        String(email).trim().toLowerCase(),
+        passwordHash,
+        String(alertEmail || email).trim().toLowerCase(),
+        String(alertPhone || "").trim() || null,
+      ]
+    );
+
+    req.session.userId = result.lastID;
+    const user = await get("SELECT * FROM users WHERE id = ?", [result.lastID]);
+    return res.status(201).json({ user: withoutSensitiveUserFields(user) });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required." });
+    }
+
+    const user = await get("SELECT * FROM users WHERE email = ?", [String(email).trim().toLowerCase()]);
+    if (!user) return res.status(401).json({ error: "Invalid credentials." });
+
+    const isValid = await bcrypt.compare(String(password), user.password_hash);
+    if (!isValid) return res.status(401).json({ error: "Invalid credentials." });
+
+    req.session.userId = user.id;
+    return res.json({ user: withoutSensitiveUserFields(user) });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.json({ ok: true });
+  });
+});
+
+app.get("/api/auth/me", async (req, res) => {
+  const userId = req.session?.userId;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+  const user = await get("SELECT * FROM users WHERE id = ?", [userId]);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  return res.json({ user: withoutSensitiveUserFields(user) });
+});
+
+app.patch("/api/auth/profile", requireAuth, async (req, res) => {
+  try {
+    const { name, alertEmail, alertPhone } = req.body;
+    const resolvedName = String(name || req.currentUser.name).trim();
+    const resolvedAlertEmail = String(alertEmail || req.currentUser.alert_email_to).trim().toLowerCase();
+    const resolvedAlertPhone = String(alertPhone || "").trim() || null;
+    if (!resolvedName || !resolvedAlertEmail) {
+      return res.status(400).json({ error: "Name and alert email are required." });
+    }
+
+    await run(
+      `
+      UPDATE users
+      SET name = ?, alert_email_to = ?, alert_phone_to = ?
+      WHERE id = ?
+      `,
+      [resolvedName, resolvedAlertEmail, resolvedAlertPhone, req.currentUser.id]
+    );
+    const updated = await get("SELECT * FROM users WHERE id = ?", [req.currentUser.id]);
+    return res.json({ user: withoutSensitiveUserFields(updated) });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/reminders", requireAuth, async (req, res) => {
   try {
     const view = String(req.query.view || "all").toLowerCase();
     const limitRaw = Number(req.query.limit);
     const offsetRaw = Number(req.query.offset);
     const hasPagination = Number.isFinite(limitRaw) || Number.isFinite(offsetRaw);
 
-    let whereClause = "";
+    const whereParts = ["user_id = ?"];
+    const whereParams = [req.currentUser.id];
     if (view === "active") {
-      whereClause = "WHERE status = 'pending' AND datetime(reminder_at) >= datetime('now')";
+      whereParts.push("status = 'pending'");
+      whereParts.push("datetime(reminder_at) >= datetime('now')");
     } else if (view === "reminded") {
-      whereClause = "WHERE status = 'reminded'";
+      whereParts.push("status = 'reminded'");
     } else if (view === "failed") {
-      whereClause = "WHERE status = 'failed'";
+      whereParts.push("status = 'failed'");
     }
+    const whereClause = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
 
     if (!hasPagination) {
       const reminders = await all(
@@ -87,7 +228,8 @@ app.get("/api/reminders", async (req, res) => {
         FROM reminders
         ${whereClause}
         ORDER BY datetime(created_at) DESC
-        `
+        `,
+        whereParams
       );
       return res.json(reminders);
     }
@@ -102,14 +244,15 @@ app.get("/api/reminders", async (req, res) => {
       ORDER BY datetime(created_at) DESC
       LIMIT ? OFFSET ?
       `,
-      [limit, offset]
+      [...whereParams, limit, offset]
     );
     const totalRow = await get(
       `
       SELECT COUNT(*) as total
       FROM reminders
       ${whereClause}
-      `
+      `,
+      whereParams
     );
     const total = totalRow?.total || 0;
 
@@ -125,7 +268,7 @@ app.get("/api/reminders", async (req, res) => {
   }
 });
 
-app.post("/api/reminders", upload.single("audio"), async (req, res) => {
+app.post("/api/reminders", requireAuth, upload.single("audio"), async (req, res) => {
   try {
     const { quickInput = "" } = req.body;
     if (!quickInput.trim() && !req.file) {
@@ -178,12 +321,13 @@ app.post("/api/reminders", upload.single("audio"), async (req, res) => {
     const result = await run(
       `
       INSERT INTO reminders (
-        client_name, email, phone, note_text, audio_path,
-        reminder_input, reminder_at, notify_email, notify_sms, notify_timing
+        user_id, client_name, email, phone, note_text, audio_path,
+        reminder_input, reminder_at, notify_email, notify_sms, notify_timing, alert_email_to, alert_phone_to
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
+        req.currentUser.id,
         aiData.clientName || null,
         aiData.email || null,
         aiData.phone || null,
@@ -194,6 +338,8 @@ app.post("/api/reminders", upload.single("audio"), async (req, res) => {
         notifyEmail,
         notifySms,
         aiData.notifyTiming || "morning_of",
+        req.currentUser.alert_email_to,
+        req.currentUser.alert_phone_to || null,
       ]
     );
 
@@ -223,10 +369,13 @@ app.post("/api/reminders", upload.single("audio"), async (req, res) => {
   }
 });
 
-app.patch("/api/reminders/:id/complete", async (req, res) => {
+app.patch("/api/reminders/:id/complete", requireAuth, async (req, res) => {
   try {
-    await run("UPDATE reminders SET status = 'reminded', notified_at = datetime('now') WHERE id = ?", [req.params.id]);
-    const updated = await get("SELECT * FROM reminders WHERE id = ?", [req.params.id]);
+    await run("UPDATE reminders SET status = 'reminded', notified_at = datetime('now') WHERE id = ? AND user_id = ?", [
+      req.params.id,
+      req.currentUser.id,
+    ]);
+    const updated = await get("SELECT * FROM reminders WHERE id = ? AND user_id = ?", [req.params.id, req.currentUser.id]);
     if (!updated) return res.status(404).json({ error: "Reminder not found" });
     return res.json(updated);
   } catch (error) {
@@ -234,23 +383,23 @@ app.patch("/api/reminders/:id/complete", async (req, res) => {
   }
 });
 
-app.delete("/api/reminders/:id", async (req, res) => {
+app.delete("/api/reminders/:id", requireAuth, async (req, res) => {
   try {
-    const existing = await get("SELECT * FROM reminders WHERE id = ?", [req.params.id]);
+    const existing = await get("SELECT * FROM reminders WHERE id = ? AND user_id = ?", [req.params.id, req.currentUser.id]);
     if (!existing) return res.status(404).json({ error: "Reminder not found" });
 
-    await run("DELETE FROM reminders WHERE id = ?", [req.params.id]);
+    await run("DELETE FROM reminders WHERE id = ? AND user_id = ?", [req.params.id, req.currentUser.id]);
     return res.json({ ok: true });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
 });
 
-app.post("/api/reminders/cleanup-past", async (req, res) => {
+app.post("/api/reminders/cleanup-past", requireAuth, async (req, res) => {
   try {
-    const before = await get("SELECT COUNT(*) as total FROM reminders");
-    await run("DELETE FROM reminders WHERE datetime(reminder_at) < datetime('now')");
-    const after = await get("SELECT COUNT(*) as total FROM reminders");
+    const before = await get("SELECT COUNT(*) as total FROM reminders WHERE user_id = ?", [req.currentUser.id]);
+    await run("DELETE FROM reminders WHERE user_id = ? AND datetime(reminder_at) < datetime('now')", [req.currentUser.id]);
+    const after = await get("SELECT COUNT(*) as total FROM reminders WHERE user_id = ?", [req.currentUser.id]);
     const removed = Math.max((before?.total || 0) - (after?.total || 0), 0);
     return res.json({ ok: true, removed });
   } catch (error) {

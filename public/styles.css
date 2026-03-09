@@ -56,6 +56,34 @@ body {
   box-shadow: 0 8px 24px rgba(16, 24, 40, 0.05);
 }
 
+.auth-form {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.auth-tab {
+  flex: 1;
+}
+
+.active-tab {
+  background: #eef3ff;
+  border-color: #cbd8ff;
+  color: #1f3f91;
+}
+
+.auth-form input {
+  border: 1px solid #d8ddea;
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 14px;
+}
+
 .composer-card {
   margin-bottom: 16px;
 }

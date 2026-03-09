@@ -16,7 +16,40 @@
         </div>
       </header>
 
-      <section class="composer-card">
+      <section class="composer-card" id="authCard">
+        <h3 style="margin-top:0;">Account Access</h3>
+        <div class="auth-tabs">
+          <button type="button" id="showRegisterBtn" class="page-btn auth-tab active-tab">Register</button>
+          <button type="button" id="showLoginBtn" class="page-btn auth-tab">Login</button>
+        </div>
+        <form id="registerForm" class="auth-form">
+          <input name="name" type="text" placeholder="Full name" required />
+          <input name="email" type="email" placeholder="Email" required />
+          <input name="password" type="password" placeholder="Password (min 6 chars)" required />
+          <input name="alertEmail" type="email" placeholder="Alert email (where reminders should come)" required />
+          <input name="alertPhone" type="text" placeholder="Alert phone (optional for SMS)" />
+          <button type="submit" class="page-btn">Register</button>
+        </form>
+        <form id="loginForm" class="auth-form hidden" style="margin-top:10px;">
+          <input name="email" type="email" placeholder="Email" required />
+          <input name="password" type="password" placeholder="Password" required />
+          <button type="submit" class="page-btn">Login</button>
+        </form>
+        <p id="authMessage" class="message"></p>
+      </section>
+
+      <section class="composer-card hidden" id="userCard">
+        <p id="userLine" class="list-meta">Logged in</p>
+        <form id="profileForm" class="auth-form">
+          <input name="name" type="text" placeholder="Name" required />
+          <input name="alertEmail" type="email" placeholder="Alert email" required />
+          <input name="alertPhone" type="text" placeholder="Alert phone (optional)" />
+          <button type="submit" class="page-btn">Update Profile</button>
+          <button type="button" id="logoutBtn" class="page-btn">Logout</button>
+        </form>
+      </section>
+
+      <section class="composer-card hidden" id="appCard">
         <form id="captureForm" class="composer" enctype="multipart/form-data">
           <button type="button" id="micBtn" class="icon-btn" aria-label="Record voice">🎤</button>
           <input
@@ -40,7 +73,7 @@
         <p id="message" class="message"></p>
       </section>
 
-      <section class="list-card">
+      <section class="list-card hidden" id="listCard">
         <h2>Active reminders</h2>
         <p class="list-meta"><span id="upcomingCount">0</span> active</p>
         <div id="reminderList" class="reminder-list"></div>
